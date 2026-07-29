@@ -1,0 +1,8 @@
+{
+  "name": "Rota do Crime",
+  "description": "Um jogo de detetive educativo baseado em Carmen Sandiego, focado em história e geografia.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
