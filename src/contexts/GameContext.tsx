@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, ReactNode } from 'react';
 import { Cidade, Suspeito, Tesouro } from '../types';
 import { supabase } from '../supabaseClient';
+import { useAuth } from './AuthContext';
 
 export interface CaracteristicasMandado {
   sexo: string;
@@ -53,6 +54,7 @@ const DIA_LIMITE = 6; // Domingo
 const HORA_LIMITE = 18;
 
 export const GameProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+  const { fetchJogador } = useAuth();
   const [gameState, setGameState] = useState<GameState>({
     dia: 0, // Inicia na Segunda-feira
     hora: 9, // Inicia às 09:00
@@ -155,6 +157,26 @@ export const GameProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         // Encontrou o bandido
         const temMandadoValido = gameState.mandadoEmitido?.id === gameState.suspeitoAtual.id;
         
+        if (temMandadoValido) {
+          // Vitória: atualizar pontuação no Supabase
+          supabase.auth.getUser().then(({ data: { user } }) => {
+            if (user) {
+              supabase.from('jogadores').select('casos_resolvidos, pontuacao_total').eq('id', user.id).single().then(({ data }) => {
+                if (data) {
+                  const novosCasos = (data.casos_resolvidos || 0) + 1;
+                  const novaPontuacao = (data.pontuacao_total || 0) + 100;
+                  supabase.from('jogadores').update({
+                    casos_resolvidos: novosCasos,
+                    pontuacao_total: novaPontuacao
+                  }).eq('id', user.id).then(() => {
+                    fetchJogador(user.id);
+                  });
+                }
+              });
+            }
+          });
+        }
+        
         setGameState(prev => ({
           ...prev,
           fimDeJogo: true,
@@ -162,7 +184,7 @@ export const GameProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           pistasColetadas: [
             ...prev.pistasColetadas,
             temMandadoValido 
-              ? `🚨 VOCÊ ENCONTROU O SUSPEITO! Como você tinha um mandado válido contra ${gameState.suspeitoAtual?.nome}, a prisão foi efetuada e o tesouro recuperado!`
+              ? `🚨 VOCÊ ENCONTROU O SUSPEITO! Como você tinha um mandado válido contra ${gameState.suspeitoAtual?.nome}, a prisão foi efetuada e o tesouro recuperado! +1 Caso Resolvido e +100 Pontos adicionados ao seu registro da Interpol!`
               : `❌ VOCÊ ENCONTROU O SUSPEITO! No entanto, sem um mandado de prisão válido e com características exatas, o suspeito escapou pelos fundos...`
           ]
         }));
@@ -252,15 +274,22 @@ export const GameProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const { data: suspeitos, error: erroSuspeito } = await supabase.from('suspeitos').select('*');
       const { data: cidades, error: erroCidades } = await supabase.from('cidades').select('*');
 
-      let tesourosDados = tesouros;
-      let suspeitosDados = suspeitos;
-      let cidadesDados = cidades;
+      let tesourosDados = tesouros || [];
+      let suspeitosDados = suspeitos || [];
+      let cidadesDados = cidades || [];
 
-      if (erroTesouro || erroSuspeito || erroCidades || !tesouros?.length || !suspeitos?.length || !cidades?.length) {
-        console.warn('Erro ao buscar dados do Supabase ou banco vazio. Usando dados de fallback.', { erroTesouro, erroSuspeito, erroCidades });
-        
+      if (erroTesouro || !tesourosDados.length) {
+        console.warn('Erro ao buscar tesouros ou tabela vazia:', erroTesouro);
         tesourosDados = [{ id: '1', nome: 'Coroa Real', cidade_origem_id: '1', dificuldade: 'Fácil' }];
+      }
+
+      if (erroSuspeito || !suspeitosDados.length) {
+        console.warn('Erro ao buscar suspeitos ou tabela vazia:', erroSuspeito);
         suspeitosDados = [{ id: '1', nome: 'Carmen Sandiego', sexo: 'Feminino', cabelo: 'Preto', caracteristica: 'Chapéu Vermelho', veiculo: 'Conversível', hobby: 'Tênis' }];
+      }
+
+      if (erroCidades || cidadesDados.length < 5) {
+        console.warn('Erro ao buscar cidades ou tabela com poucas cidades:', erroCidades);
         cidadesDados = [
           { id: '1', nome: 'Londres', pais: 'Reino Unido', populacao: 8900000, bandeira_cores: 'Vermelho, Azul e Branco', moeda: 'Libra', ponto_turistico: 'Big Ben' },
           { id: '2', nome: 'Paris', pais: 'França', populacao: 2100000, bandeira_cores: 'Azul, Branco e Vermelho', moeda: 'Euro', ponto_turistico: 'Torre Eiffel' },
@@ -270,9 +299,46 @@ export const GameProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         ];
       }
 
-      // 2. Sorteia 1 tesouro e 1 suspeito aleatoriamente
-      const tesouroSorteado = tesourosDados[Math.floor(Math.random() * tesourosDados.length)] as Tesouro;
-      const suspeitoSorteado = suspeitosDados[Math.floor(Math.random() * suspeitosDados.length)] as Suspeito;
+      // 2. Garante que os casos e suspeitos não se repitam usando localStorage
+      const { data: { user } } = await supabase.auth.getUser();
+      const userId = user?.id || 'guest';
+      const seenTesourosKey = `seen_tesouros_${userId}`;
+      const seenSuspeitosKey = `seen_suspeitos_${userId}`;
+      
+      let seenTesouros: string[] = [];
+      let seenSuspeitos: string[] = [];
+      
+      try {
+        const storedT = localStorage.getItem(seenTesourosKey);
+        if (storedT) seenTesouros = JSON.parse(storedT);
+        
+        const storedS = localStorage.getItem(seenSuspeitosKey);
+        if (storedS) seenSuspeitos = JSON.parse(storedS);
+      } catch (e) {}
+
+      let availableTesouros = tesourosDados.filter((t: any) => !seenTesouros.includes(t.id));
+      let availableSuspeitos = suspeitosDados.filter((s: any) => !seenSuspeitos.includes(s.id));
+
+      if (availableTesouros.length === 0) {
+        availableTesouros = tesourosDados;
+        seenTesouros = [];
+      }
+      
+      if (availableSuspeitos.length === 0) {
+        availableSuspeitos = suspeitosDados;
+        seenSuspeitos = [];
+      }
+
+      const tesouroSorteado = availableTesouros[Math.floor(Math.random() * availableTesouros.length)] as Tesouro;
+      const suspeitoSorteado = availableSuspeitos[Math.floor(Math.random() * availableSuspeitos.length)] as Suspeito;
+
+      seenTesouros.push(tesouroSorteado.id);
+      seenSuspeitos.push(suspeitoSorteado.id);
+      
+      try {
+        localStorage.setItem(seenTesourosKey, JSON.stringify(seenTesouros));
+        localStorage.setItem(seenSuspeitosKey, JSON.stringify(seenSuspeitos));
+      } catch (e) {}
 
       // 3. Monta a rota de fuga (4 cidades aleatórias, sendo a primeira o local do roubo)
       const cidadesEmbaralhadas = [...cidadesDados].sort(() => 0.5 - Math.random());

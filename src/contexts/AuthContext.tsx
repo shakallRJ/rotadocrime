@@ -9,9 +9,10 @@ interface AuthContextType {
   jogador: Jogador | null;
   loading: boolean;
   signOut: () => Promise<void>;
+  fetchJogador: (userId: string) => Promise<void>;
 }
 
-const AuthContext = createContext<AuthContextType>({ user: null, session: null, jogador: null, loading: true, signOut: async () => {} });
+const AuthContext = createContext<AuthContextType>({ user: null, session: null, jogador: null, loading: true, signOut: async () => {}, fetchJogador: async () => {} });
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
@@ -62,7 +63,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   return (
-    <AuthContext.Provider value={{ user, session, jogador, loading, signOut }}>
+    <AuthContext.Provider value={{ user, session, jogador, loading, signOut, fetchJogador }}>
       {children}
     </AuthContext.Provider>
   );

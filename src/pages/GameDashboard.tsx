@@ -7,9 +7,11 @@ import { useEffect, useState } from 'react';
 import { useGame } from '../contexts/GameContext';
 import { useAuth } from '../contexts/AuthContext';
 import { Cidade } from '../types';
+import RankingModal from '../components/RankingModal';
 
 export default function GameDashboard() {
   const { user, jogador, signOut } = useAuth();
+  const [isRankingOpen, setIsRankingOpen] = useState(false);
 
   const { 
     gameState, 
@@ -249,9 +251,14 @@ export default function GameDashboard() {
         </div>
         <div className="flex space-x-4">
           <div className="px-2 py-1 bg-[#1a3a1a] text-[#33ff33]">PONTUAÇÃO: {jogador?.pontuacao_total || 0}</div>
+          <button onClick={() => setIsRankingOpen(true)} className="px-2 py-1 bg-[#1a3a1a] text-[#33ff33] border border-[#33ff33] hover:bg-[#33ff33] hover:text-black font-bold uppercase cursor-pointer transition-colors">RANKING MUNDIAL</button>
           <button onClick={signOut} className="px-2 py-1 bg-red-900/30 text-red-500 border border-red-500/30 font-bold uppercase cursor-pointer hover:bg-red-900/50 transition-colors">Sair do Jogo</button>
         </div>
       </footer>
+
+      {isRankingOpen && (
+        <RankingModal onClose={() => setIsRankingOpen(false)} />
+      )}
     </div>
   );
 }
