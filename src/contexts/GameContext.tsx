@@ -2,12 +2,14 @@ import React, { createContext, useContext, useState, ReactNode } from 'react';
 import { Cidade, Suspeito, Tesouro } from '../types';
 import { supabase } from '../supabaseClient';
 import { useAuth } from './AuthContext';
+import { playError, playSiren } from '../utils/sounds';
 
 export interface CaracteristicasMandado {
   sexo: string;
   hobby: string;
   cabelo: string;
   veiculo: string;
+  caracteristica: string;
 }
 
 interface GameState {
@@ -24,6 +26,7 @@ interface GameState {
   vitoria: boolean;
   todasCidades: Cidade[];
   destinosAtuais: Cidade[];
+  todosSuspeitos: Suspeito[];
 }
 
 interface GameContextData {
@@ -69,6 +72,7 @@ export const GameProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     vitoria: false,
     todasCidades: [],
     destinosAtuais: [],
+    todosSuspeitos: [],
   });
 
   const avancarTempo = (horas: number) => {
@@ -158,6 +162,7 @@ export const GameProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         const temMandadoValido = gameState.mandadoEmitido?.id === gameState.suspeitoAtual.id;
         
         if (temMandadoValido) {
+          playSiren();
           // Vitória: atualizar pontuação no Supabase
           supabase.auth.getUser().then(({ data: { user } }) => {
             if (user) {
@@ -175,6 +180,8 @@ export const GameProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
               });
             }
           });
+        } else {
+          playError();
         }
         
         setGameState(prev => ({
@@ -229,7 +236,7 @@ export const GameProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const emitirMandado = (caracteristicas: CaracteristicasMandado) => {
     if (gameState.fimDeJogo || !gameState.suspeitoAtual) return;
 
-    const { sexo, hobby, cabelo, veiculo } = caracteristicas;
+    const { sexo, hobby, cabelo, veiculo, caracteristica } = caracteristicas;
     const s = gameState.suspeitoAtual;
 
     // Ignora campos vazios na verificação, mas exige que todos preenchidos batam, e todos precisam estar preenchidos para emissão?
@@ -239,15 +246,17 @@ export const GameProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const bateHobby = !hobby || s.hobby.toLowerCase() === hobby.toLowerCase();
     const bateCabelo = !cabelo || s.cabelo.toLowerCase() === cabelo.toLowerCase();
     const bateVeiculo = !veiculo || s.veiculo.toLowerCase() === veiculo.toLowerCase();
+    const bateCaracteristica = !caracteristica || s.caracteristica.toLowerCase() === caracteristica.toLowerCase();
 
-    // Precisa preencher pelo menos alguns para cruzar os dados, mas aqui vamos assumir que o jogador escolhe as 4
-    if (sexo && hobby && cabelo && veiculo && bateSexo && bateHobby && bateCabelo && bateVeiculo) {
+    // Precisa preencher pelo menos alguns para cruzar os dados, mas aqui vamos assumir que o jogador escolhe as 5
+    if (sexo && hobby && cabelo && veiculo && caracteristica && bateSexo && bateHobby && bateCabelo && bateVeiculo && bateCaracteristica) {
       setGameState((prev) => ({
         ...prev,
         mandadoEmitido: prev.suspeitoAtual,
         erroMandado: null
       }));
     } else {
+      playError();
       setGameState((prev) => ({
         ...prev,
         mandadoEmitido: null,
@@ -280,12 +289,24 @@ export const GameProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
       if (erroTesouro || !tesourosDados.length) {
         console.warn('Erro ao buscar tesouros ou tabela vazia:', erroTesouro);
-        tesourosDados = [{ id: '1', nome: 'Coroa Real', cidade_origem_id: '1', dificuldade: 'Fácil' }];
+        tesourosDados = [
+          { id: '1', nome: 'Coroa Real', cidade_origem_id: '1', dificuldade: 'Fácil' },
+          { id: '2', nome: 'Diamante Estrela', cidade_origem_id: '2', dificuldade: 'Médio' },
+          { id: '3', nome: 'Pintura Renascentista', cidade_origem_id: '3', dificuldade: 'Difícil' },
+          { id: '4', nome: 'Estatua de Ouro', cidade_origem_id: '4', dificuldade: 'Fácil' },
+          { id: '5', nome: 'Colar de Pérolas', cidade_origem_id: '5', dificuldade: 'Médio' }
+        ];
       }
 
       if (erroSuspeito || !suspeitosDados.length) {
         console.warn('Erro ao buscar suspeitos ou tabela vazia:', erroSuspeito);
-        suspeitosDados = [{ id: '1', nome: 'Carmen Sandiego', sexo: 'Feminino', cabelo: 'Preto', caracteristica: 'Chapéu Vermelho', veiculo: 'Conversível', hobby: 'Tênis' }];
+        suspeitosDados = [
+          { id: '1', nome: 'Carmen Sandiego', sexo: 'Feminino', cabelo: 'Preto', caracteristica: 'Chapéu Vermelho', veiculo: 'Conversível', hobby: 'Tênis' },
+          { id: '2', nome: 'Gatuno Sombrio', sexo: 'Masculino', cabelo: 'Loiro', caracteristica: 'Cicatriz', veiculo: 'Moto', hobby: 'Xadrez' },
+          { id: '3', nome: 'Rosa Selvagem', sexo: 'Feminino', cabelo: 'Ruivo', caracteristica: 'Tatuagem', veiculo: 'Limusine', hobby: 'Pintura' },
+          { id: '4', nome: 'Barão Von Roubo', sexo: 'Masculino', cabelo: 'Careca', caracteristica: 'Monóculo', veiculo: 'Helicóptero', hobby: 'Golfe' },
+          { id: '5', nome: 'Lady Larápia', sexo: 'Feminino', cabelo: 'Castanho', caracteristica: 'Joias Brilhantes', veiculo: 'Iate', hobby: 'Mergulho' }
+        ];
       }
 
       if (erroCidades || cidadesDados.length < 5) {
@@ -340,9 +361,18 @@ export const GameProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         localStorage.setItem(seenSuspeitosKey, JSON.stringify(seenSuspeitos));
       } catch (e) {}
 
-      // 3. Monta a rota de fuga (4 cidades aleatórias, sendo a primeira o local do roubo)
+      // 3. Monta a rota de fuga dinamicamente com base na dificuldade do tesouro
+      let tamanhoDaRota = 4;
+      if (tesouroSorteado.dificuldade === 'Fácil' || tesouroSorteado.dificuldade === 1 || String(tesouroSorteado.dificuldade) === '1') {
+        tamanhoDaRota = 3;
+      } else if (tesouroSorteado.dificuldade === 'Médio' || tesouroSorteado.dificuldade === 2 || String(tesouroSorteado.dificuldade) === '2') {
+        tamanhoDaRota = 5;
+      } else if (tesouroSorteado.dificuldade === 'Difícil' || tesouroSorteado.dificuldade === 3 || String(tesouroSorteado.dificuldade) === '3') {
+        tamanhoDaRota = 7;
+      }
+
       const cidadesEmbaralhadas = [...cidadesDados].sort(() => 0.5 - Math.random());
-      const rota = cidadesEmbaralhadas.slice(0, 4) as Cidade[];
+      const rota = cidadesEmbaralhadas.slice(0, tamanhoDaRota) as Cidade[];
 
       const cidadeInicial = rota[0];
       const proximaCorreta = rota[1];
@@ -366,7 +396,8 @@ export const GameProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         fimDeJogo: false,
         vitoria: false,
         todasCidades: cidadesDados,
-        destinosAtuais: destinos
+        destinosAtuais: destinos,
+        todosSuspeitos: suspeitosDados
       });
 
     } catch (error) {

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../supabaseClient';
 import { Jogador } from '../types';
+import { playBeep } from '../utils/sounds';
 
 interface RankingModalProps {
   onClose: () => void;
@@ -40,7 +41,7 @@ export default function RankingModal({ onClose }: RankingModalProps) {
         <div className="flex justify-between items-center border-b-2 border-[#1a3a1a] pb-4 mb-6">
           <h2 className="text-xl font-bold text-[#33ff33] uppercase">Ranking Mundial - Interpol</h2>
           <button 
-            onClick={onClose}
+            onClick={() => { playBeep(); onClose(); }}
             className="text-red-500 font-bold hover:text-white hover:bg-red-900/50 px-2 py-1 transition-colors uppercase border border-red-900/50"
           >
             Fechar [X]
